@@ -1,208 +1,106 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-typedef struct pair {
-    char *key;
-    char *value;
-    struct pair *next;
-} pair_t;
+#include "db.h"
+#include "listify.h"
+#include "util.h"
 
-pair_t *head = NULL;
+#define DB_FILE "./.rn-hist"
+#define LS_COMMAND "ls -vp --group-directories-first"
 
-int run(char command[], char output[], int output_size);
-char *getLine(char *str, int index);
-char *trim(char *str);
-void addPair(char *key, char *value);
-void freePair();
+void help(char *this) {
+    printf("Usage: %s [-h]\n", this);
+    printf("\t-h  Show this help message\n");
+}
 
-int main() {
-    // make tmp
-    char t_filename[] = "/tmp/rn-XXXXXXXX";
-    int fd = mkstemp(t_filename);
-    if (fd == -1) {
-        perror("mkstemp");
-        return 1;
+void revert(char *file) {
+    printf("revert\n");
+    printf("path: %s\n", file);
+}
+
+// struct Address get_changes(struct string_list initial, struct string_list final) {
+void get_changes(struct string_list initial, struct string_list final) {
+    if (initial.size != final.size) die("size does't match");
+
+    for (int i = 1; i < initial.size; i++) {
+        printf("%s -> %s\n", initial.data[i], final.data[i]);
     }
+}
+
+void bulk_rename(char *path, int all_flag) {
+    // make tmp
+    char tmp_filename[] = "/tmp/rn-XXXXXXXX";
+    int fd = mkstemp(tmp_filename);
+    if (fd == -1) die("could not make temp file");
     close(fd);
 
-    // open
-    FILE *t_file = fopen(t_filename, "w");
-    if (t_file == NULL) {
-        printf("Could not open file\n");
-        return 1;
+    // write ls to tmp file
+    char command[256];
+    if (all_flag) {
+        sprintf(command, "%s -A %s", LS_COMMAND, path);
+    } else {
+        sprintf(command, "%s %s", LS_COMMAND, path);
     }
+    write_command_to_file(tmp_filename, command);
 
-    // get output for ls
-    char ls[] = "ls -Av --group-directories-first";
-    int ls_s = 10240;
-    char ls_out[ls_s];
-    run(ls, ls_out, ls_s);
-
-    // write
-    fprintf(t_file, "%s", ls_out);
-    fclose(t_file);
+    // initial state
+    struct string_list *initial_state = read_file_to_list(tmp_filename);
 
     // open in editor
     char *editor = getenv("EDITOR");
-    if (editor == NULL) {
-        printf("$EDITOR not set.\n");
-        return 1;
-    }
+    if (editor == NULL) die("$EDITOR not set.");
+
     char editor_command[256];
-    sprintf(editor_command, "%s %s", editor, t_filename);
+    sprintf(editor_command, "%s %s", editor, tmp_filename);
     system(editor_command);
 
-    // re-open tmp file
-    FILE *t_file_after = fopen(t_filename, "r");
-    if (t_file_after == NULL) {
-        printf("Error: could not open file\n");
-        return 1;
-    }
+    // final state
+    struct string_list *final_state = read_file_to_list(tmp_filename);
+    remove(tmp_filename);
 
-    // read
-    char t_buffer_after[256];
-    int index = 0;
-    while (fgets(t_buffer_after, sizeof(t_buffer_after), t_file_after) !=
-           NULL) {
-        char *t_buffer_before = getLine(ls_out, index);
-        char *before = trim(t_buffer_before);
-        char *after = trim(t_buffer_after);
-        if (after[0] == '\0') {
-            printf("Error: cannot be renamed to '', operation failed.\n");
-            return 1;
-        }
-        if (strcmp(before, after) != 0) {
-            addPair(before, after);
-        }
-        index++;
-    }
-
-    if (head != NULL) {
-        pair_t *current = head;
-        while (current != NULL) {
-            printf("%s -> %s\n", current->key, current->value);
-            // rename
-            // if fail exit
-            current = current->next;
-        }
-        return 0;
-    } else {
-        printf("Nothing to do\n");
-    }
-
-    freePair();
-    remove(t_filename);
-    return 0;
+    get_changes(*initial_state, *final_state);
 }
 
-int run(char command[], char output[], int output_size) {
-    FILE *pipe;
-    pipe = popen(command, "r");
+int main(int argc, char *argv[]) {
+    char *path = ".";
+    int all_flag = 0;
+    int confirm_flag = 0;
 
-    if (!pipe) {
-        perror("popen");
-        return 1;
-    }
-    // read the output
-    fread(output, 1, output_size, pipe);
-    pclose(pipe);
-
-    return 0;
-}
-
-char *getLine(char *str, int index) {
-    int lineCount = 0;
-    int startIdx = 0;
-
-    // find the start index of the desired line
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\n') {
-            lineCount++;
-            if (lineCount == index) {
-                startIdx = i + 1;
-                break;
+    if (argc > 1) {
+        if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+            help(argv[0]);
+            return 0;
+        } else if (strcmp(argv[1], "-r") == 0 || strcmp(argv[1], "--revert") == 0) {
+            if (argc == 3) path = argv[2];
+            expand_path(path);
+            revert(path);
+            return 0;
+        } else {
+            for (int i = 0; argv[1][i] != '\0'; i++) {
+                if (argv[1][i] == 'a') {
+                    all_flag = 1;
+                } else if (argv[1][i] == 'c') {
+                    confirm_flag = 1;
+                } else if (argv[1][i] == '-') {
+                } else {
+                    fprintf(stderr, "Error: Unknown option '%c'\n", argv[1][i]);
+                    return 1;
+                }
             }
+
+            if (argc > 2) path = argv[2];
+            expand_path(path);
         }
     }
 
-    if (lineCount < index) {
-        return NULL;
-    }
+    printf("bulk rename\n");
+    printf("path: %s\n", path);
+    printf("a:%i, c:%i\n", all_flag, confirm_flag);
 
-    // find the end index of the desired line
-    int endIdx = startIdx;
-    while (str[endIdx] != '\0' && str[endIdx] != '\n') {
-        endIdx++;
-    }
+    bulk_rename(path, all_flag);
 
-    // allocate memory for the desired line
-    char *line = (char *)malloc((endIdx - startIdx + 1) * sizeof(char));
-
-    // copy the desired line into the allocated memory
-    strncpy(line, str + startIdx, endIdx - startIdx);
-    line[endIdx - startIdx] = '\0';
-
-    return line;
-}
-
-char *trim(char *str) {
-    int len = strlen(str);
-    int start = 0;
-    int end = len - 1;
-
-    // find the first non-whitespace character
-    while (start <= end && isspace(str[start])) {
-        start++;
-    }
-    // find the last non-whitespace character
-    while (start <= end && isspace(str[end])) {
-        end--;
-    }
-    // shift the string to remove whitespace
-    memmove(str, str + start, end - start + 1);
-
-    str[end - start + 1] = '\0';
-    return str;
-}
-
-void addPair(char *key, char *value) {
-    pair_t *newPair = (pair_t *)malloc(sizeof(pair_t));
-    if (newPair == NULL) {
-        fprintf(stderr, "Memory allocation failed (pair)\n");
-        return;
-    }
-
-    // allocate memory for the key
-    newPair->key = strdup(key);
-    if (newPair->key == NULL) {
-        fprintf(stderr, "Memory allocation failed (key)\n");
-        free(newPair);
-        return;
-    }
-    // allocate memory for the value
-    newPair->value = strdup(value);
-    if (newPair->value == NULL) {
-        fprintf(stderr, "Memory allocation failed (value)\n");
-        free(newPair->key);
-        free(newPair);
-        return;
-    }
-
-    newPair->next = head;
-    head = newPair;
-}
-
-void freePair() {
-    pair_t *current = head;
-    while (current != NULL) {
-        pair_t *temp = current;
-        current = current->next;
-        free(temp->key);
-        free(temp->value);
-        free(temp);
-    }
-    head = NULL;
+    return 0;
 }
