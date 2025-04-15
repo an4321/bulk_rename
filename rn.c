@@ -21,13 +21,35 @@ void revert(char *file) {
     printf("path: %s\n", file);
 }
 
-// struct Address get_changes(struct string_list initial, struct string_list final) {
-void get_changes(struct string_list initial, struct string_list final) {
-    if (initial.size != final.size) die("size does't match");
+struct Address *get_changes(const char *file_name, struct string_list initial, struct string_list final) {
+    if (initial.size != final.size) die("size doesn't match");
+
+    struct Address *addr = (struct Address *)malloc(sizeof(struct Address));
+    if (addr == NULL) {
+        perror("Failed to allocate memory for Address");
+        return NULL;
+    }
+
+    strncpy(addr->file_name, file_name, MAX_DATA - 1);
+    addr->file_name[MAX_DATA - 1] = '\0'; // ensure null termination
+    addr->total_changes = 0;
 
     for (int i = 1; i < initial.size; i++) {
-        printf("%s -> %s\n", initial.data[i], final.data[i]);
+        if (strcmp(initial.data[i], final.data[i]) != 0) {
+            if (addr->total_changes < MAX_ROWS) {
+                strncpy(addr->changed_files[addr->total_changes].file_before, initial.data[i], MAX_DATA - 1);
+                addr->changed_files[addr->total_changes].file_before[MAX_DATA - 1] = '\0';
+
+                strncpy(addr->changed_files[addr->total_changes].file_after, final.data[i], MAX_DATA - 1);
+                addr->changed_files[addr->total_changes].file_after[MAX_DATA - 1] = '\0';
+
+                addr->total_changes++;
+            } else {
+                die("too many changes");
+            }
+        }
     }
+    return addr;
 }
 
 void bulk_rename(char *path, int all_flag) {
@@ -48,10 +70,17 @@ void bulk_rename(char *path, int all_flag) {
 
     // initial state
     struct string_list *initial_state = read_file_to_list(tmp_filename);
+    if (!initial_state) {
+        remove(tmp_filename);
+        die("failed to read temp file");
+    }
 
     // open in editor
     char *editor = getenv("EDITOR");
-    if (editor == NULL) die("$EDITOR not set.");
+    if (editor == NULL) {
+        remove(tmp_filename);
+        die("$EDITOR not set.");
+    }
 
     char editor_command[256];
     sprintf(editor_command, "%s %s", editor, tmp_filename);
@@ -60,8 +89,42 @@ void bulk_rename(char *path, int all_flag) {
     // final state
     struct string_list *final_state = read_file_to_list(tmp_filename);
     remove(tmp_filename);
+    if (!final_state) {
+        free(initial_state->data);
+        free(initial_state);
+        die("Failed to read final state");
+    }
 
-    get_changes(*initial_state, *final_state);
+    // get changes
+    struct Address *addr = get_changes(path, *initial_state, *final_state);
+    if (!addr) {
+        free(initial_state->data);
+        free(initial_state);
+        free(final_state->data);
+        free(final_state);
+        die("Failed to get changes");
+    }
+
+    // store changes in db
+    struct Connection *conn = db_open(DB_FILE);
+    if (conn) {
+        db_set(conn, -1, addr);
+        db_write(conn);
+        db_close(conn);
+    } else {
+        fprintf(stderr, "WARNING: Could not open database to store changes.\n");
+    }
+
+    for (int i = 0; i < addr->total_changes; i++) {
+        printf("%s -> %s\n", addr->changed_files[i].file_before, addr->changed_files[i].file_after);
+    }
+
+    // free the dynamically allocated memory
+    free(initial_state->data);
+    free(initial_state);
+    free(final_state->data);
+    free(final_state);
+    free(addr);
 }
 
 int main(int argc, char *argv[]) {
@@ -85,6 +148,7 @@ int main(int argc, char *argv[]) {
                 } else if (argv[1][i] == 'c') {
                     confirm_flag = 1;
                 } else if (argv[1][i] == '-') {
+                    // ignore the hyphen
                 } else {
                     fprintf(stderr, "Error: Unknown option '%c'\n", argv[1][i]);
                     return 1;

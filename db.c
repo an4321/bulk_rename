@@ -33,11 +33,6 @@ struct Connection *db_open(const char *filename) {
     if (!conn->file) {
         conn->file = fopen(filename, "w+");
         if (!conn->file) die("Failed to open the file");
-        // initialize database
-        for (int i = 0; i < MAX_ROWS; i++) {
-            struct Address addr = {.id = i};
-            conn->db->rows[i] = addr;
-        }
     } else {
         db_load(conn);
     }

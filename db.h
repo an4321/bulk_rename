@@ -2,13 +2,12 @@
 #define MAX_ROWS 128
 
 struct Changes {
-    int id;
     char file_before[MAX_DATA];
     char file_after[MAX_DATA];
 };
 
 struct Address {
-    int id;
+    int total_changes;
     char file_name[MAX_DATA];
     struct Changes changed_files[MAX_ROWS];
 };
