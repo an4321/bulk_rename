@@ -74,7 +74,9 @@ void db_get(struct Connection *conn, int id) {
 
 int db_search(struct Connection *conn, const char *search_string) {
     for (int i = 1; i <= conn->db->total; i++) {
-        if (strcmp(search_string, conn->db->rows[i].file_name) == 0) return i;
+        if (strcmp(search_string, conn->db->rows[i].file_name) == 0) {
+            return i;
+        }
     }
     return -1;
 }

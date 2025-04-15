@@ -34,7 +34,7 @@ struct Address *get_changes(const char *file_name, struct string_list initial, s
     addr->file_name[MAX_DATA - 1] = '\0'; // ensure null termination
     addr->total_changes = 0;
 
-    for (int i = 1; i < initial.size; i++) {
+    for (int i = 0; i < initial.size; i++) {
         if (strcmp(initial.data[i], final.data[i]) != 0) {
             if (addr->total_changes < MAX_ROWS) {
                 strncpy(addr->changed_files[addr->total_changes].file_before, initial.data[i], MAX_DATA - 1);
@@ -108,7 +108,8 @@ void bulk_rename(char *path, int all_flag) {
     // store changes in db
     struct Connection *conn = db_open(DB_FILE);
     if (conn) {
-        db_set(conn, -1, addr);
+        int id = db_search(conn, path);
+        db_set(conn, id, addr);
         db_write(conn);
         db_close(conn);
     } else {
@@ -128,7 +129,7 @@ void bulk_rename(char *path, int all_flag) {
 }
 
 int main(int argc, char *argv[]) {
-    char *path = ".";
+    char *path = getenv("PWD");
     int all_flag = 0;
     int confirm_flag = 0;
 
@@ -142,20 +143,15 @@ int main(int argc, char *argv[]) {
             revert(path);
             return 0;
         } else {
-            for (int i = 0; argv[1][i] != '\0'; i++) {
-                if (argv[1][i] == 'a') {
-                    all_flag = 1;
-                } else if (argv[1][i] == 'c') {
-                    confirm_flag = 1;
-                } else if (argv[1][i] == '-') {
-                    // ignore the hyphen
-                } else {
-                    fprintf(stderr, "Error: Unknown option '%c'\n", argv[1][i]);
-                    return 1;
-                }
+            if (strcmp(argv[1], "-a") == 0 || strcmp(argv[1], "-ac") == 0 || strcmp(argv[1], "-ca") == 0) {
+                all_flag = 1;
+            }
+            if (strcmp(argv[1], "-c") == 0 || strcmp(argv[1], "-ac") == 0 || strcmp(argv[1], "-ca") == 0) {
+                confirm_flag = 1;
             }
 
-            if (argc > 2) path = argv[2];
+            if (argc == 3) path = argv[2];
+            if (argc == 2) path = argv[1];
             expand_path(path);
         }
     }
