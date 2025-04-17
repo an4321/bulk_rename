@@ -18,7 +18,7 @@ void help(char *this) {
     printf("\t-h, --help\tShow this help message\n");
     printf("\t-r, --revert\tRevert the last rename operation in <path>\n");
     printf("\t-a\t\tInclude hidden files in the listing\n");
-    printf("\t-c\t\tShow a confirm prompt (not yet implemented)\n");
+    printf("\t-c\t\tShow a confirm prompt before renaming\n");
     printf("\t<path>\t\tThe directory to perform the bulk rename on (default: .)\n");
 }
 
