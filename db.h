@@ -30,3 +30,4 @@ void db_get(struct Connection *conn, int id);
 void db_set(struct Connection *conn, int id, struct Address *changed_files);
 void db_close(struct Connection *conn);
 int db_search(struct Connection *conn, const char *search_string);
+int db_delete_item(struct Connection *conn, int id);

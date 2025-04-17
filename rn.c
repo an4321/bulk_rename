@@ -1,4 +1,4 @@
-#include <linux/limits.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +11,10 @@
 
 #define LS_COMMAND "ls -vp --group-directories-first"
 
+int all_flag = 0;
+int confirm_flag = 0;
+char db_file_path[PATH_MAX];
+
 void help(char *this) {
     printf("Usage: %s [-h] [-r <path>] [-a] [-c] [<path>]\n", this);
     printf("\t-h, --help\tShow this help message\n");
@@ -18,11 +22,6 @@ void help(char *this) {
     printf("\t-a\t\tInclude hidden files in the listing\n");
     printf("\t-c\t\tShow a confirm prompt (not yet implemented)\n");
     printf("\t<path>\t\tThe directory to perform the bulk rename on (default: .)\n");
-}
-
-void revert(char *file) {
-    printf("Reverting changes in: %s\n", file);
-    printf("This feature is not yet implemented.\n");
 }
 
 // compare string lists
@@ -65,7 +64,69 @@ struct Address *get_changes(const char *file_name, struct string_list initial,
     return addr;
 }
 
-void bulk_rename(char *path, int all_flag, int confirm_flag) {
+void bulk_rename(char *path, struct Address *addr, int reverse) {
+    if (confirm_flag) {
+        for (int i = 0; i < addr->total_changes; i++) {
+            char oldName[PATH_MAX];
+            char newName[PATH_MAX];
+
+            if (reverse) {
+                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+            } else {
+                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+            }
+
+            printf("%s -> %s\n", oldName, newName);
+        }
+
+        char response;
+        printf("Confirm rename (Y/n): ");
+        response = getchar();
+
+        if (response == 'Y' || response == 'y' || response == '\n') {
+            printf("ok\n");
+
+            for (int i = 0; i < addr->total_changes; i++) {
+                char oldName[PATH_MAX];
+                char newName[PATH_MAX];
+
+                if (reverse) {
+                    snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+                    snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+                } else {
+                    snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+                    snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+                }
+
+                safe_rename(oldName, newName);
+            }
+        } else if (response == 'N' || response == 'n') {
+            printf("Aborting\n");
+        }
+
+    } else {
+        for (int i = 0; i < addr->total_changes; i++) {
+            char oldName[PATH_MAX];
+            char newName[PATH_MAX];
+
+            if (reverse) {
+                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+            } else {
+                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+            }
+
+            if (safe_rename(oldName, newName) == 0) {
+                printf("Renamed: %s -> %s\n", oldName, newName);
+            }
+        }
+    }
+}
+
+void get_changes_and_rename(char *path) {
     // create a temp file
     char tmp_filename[] = "/tmp/rn-XXXXXXXX";
     int fd = mkstemp(tmp_filename);
@@ -129,16 +190,8 @@ void bulk_rename(char *path, int all_flag, int confirm_flag) {
         return;
     }
 
-    // initialize db_file_path
-    char db_file_path[PATH_MAX];
-    const char *home_dir = getenv("HOME");
-    if (home_dir == NULL) {
-        die("$HOME environment variable not set");
-    }
-    snprintf(db_file_path, PATH_MAX, "%s/.local/state/rn-hist.db", home_dir);
-    struct Connection *conn = db_open(db_file_path);
-
     // store the changes in the database
+    struct Connection *conn = db_open(db_file_path);
     if (conn) {
         int id = db_search(conn, path);
         db_set(conn, id, addr);
@@ -148,51 +201,7 @@ void bulk_rename(char *path, int all_flag, int confirm_flag) {
         fprintf(stderr, "WARNING: Could not open database to store changes.\n");
     }
 
-    // perform the rename operations
-    if (confirm_flag) {
-        for (int i = 0; i < addr->total_changes; i++) {
-            char oldName[PATH_MAX];
-            char newName[PATH_MAX];
-
-            snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
-            snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
-
-            printf("Renamed: %s -> %s\n", oldName, newName);
-        }
-
-        char response;
-        printf("Confirm rename (Y/n): ");
-        response = getchar();
-
-        if (response == 'Y' || response == 'y' || response == '\n') {
-            printf("ok\n");
-
-            for (int i = 0; i < addr->total_changes; i++) {
-                char oldName[PATH_MAX];
-                char newName[PATH_MAX];
-
-                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
-                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
-
-                safe_rename(oldName, newName);
-            }
-        } else if (response == 'N' || response == 'n') {
-            printf("Aborting\n");
-        }
-
-    } else {
-        for (int i = 0; i < addr->total_changes; i++) {
-            char oldName[PATH_MAX];
-            char newName[PATH_MAX];
-
-            snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
-            snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
-
-            if (safe_rename(oldName, newName) == 0) {
-                printf("Renamed: %s -> %s\n", oldName, newName);
-            }
-        }
-    }
+    bulk_rename(path, addr, 0);
 
     // free dynamically allocated memory
     free_string_list(initial_state);
@@ -200,11 +209,36 @@ void bulk_rename(char *path, int all_flag, int confirm_flag) {
     free(addr);
 }
 
-int main(int argc, char *argv[]) {
-    char path[PATH_MAX] = ".";
-    int all_flag = 0;
-    int confirm_flag = 0;
+void revert(char *path) {
+    struct Connection *conn = db_open(db_file_path);
+    if (!conn) die("Could not open database.");
 
+    int id = db_search(conn, path);
+    if (id == -1) {
+        die("the database has no entry for this directory");
+    }
+
+    struct Address *addr = &conn->db->rows[id];
+    print_address(addr);
+
+    bulk_rename(path, addr, 1);
+
+    db_delete_item(conn, id);
+    db_close(conn);
+}
+
+int main(int argc, char *argv[]) {
+
+    char path[PATH_MAX] = ".";
+
+    // initialize db path
+    const char *home_dir = getenv("HOME");
+    if (home_dir == NULL) {
+        die("$HOME environment variable not set");
+    }
+    snprintf(db_file_path, PATH_MAX, "%s/.local/state/bulk_rename.db", home_dir);
+
+    // handle args
     if (argc > 1) {
         if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
             help(argv[0]);
@@ -212,6 +246,8 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[1], "-r") == 0 || strcmp(argv[1], "--revert") == 0) {
             if (argc == 3) copy_str(path, argv[2], PATH_MAX);
             get_dir_path(path);
+
+            confirm_flag = 1;
             revert(path);
             return 0;
         } else {
@@ -233,7 +269,7 @@ int main(int argc, char *argv[]) {
 
     get_dir_path(path);
 
-    bulk_rename(path, all_flag, confirm_flag);
+    get_changes_and_rename(path);
 
     return 0;
 }
