@@ -8,7 +8,7 @@ Usage: ./rn [-h] [-r <path>] [-a] [-c] [<path>]
         -h, --help      Show this help message
         -r, --revert    Revert the last rename operation in <path>
         -a              Include hidden files in the listing
-        -c              Show a confirm prompt (not yet implemented)
+        -c              Show a confirm prompt before renaming
         <path>          The directory to perform the bulk rename on (default: .)
 
 Example:
