@@ -14,9 +14,9 @@
 void help(char *this) {
     printf("Usage: %s [-h] [-r <path>] [-a] [-c] [<path>]\n", this);
     printf("\t-h, --help\tShow this help message\n");
-    printf("\t-r, --revert <path>\tRevert the last rename operation in <path>\n");
+    printf("\t-r, --revert\tRevert the last rename operation in <path>\n");
     printf("\t-a\t\tInclude hidden files in the listing\n");
-    printf("\t-c\t\tConfirm each rename operation (not yet implemented)\n");
+    printf("\t-c\t\tShow a confirm prompt (not yet implemented)\n");
     printf("\t<path>\t\tThe directory to perform the bulk rename on (default: .)\n");
 }
 
@@ -65,7 +65,7 @@ struct Address *get_changes(const char *file_name, struct string_list initial,
     return addr;
 }
 
-void bulk_rename(char *path, int all_flag) {
+void bulk_rename(char *path, int all_flag, int confirm_flag) {
     // create a temp file
     char tmp_filename[] = "/tmp/rn-XXXXXXXX";
     int fd = mkstemp(tmp_filename);
@@ -149,17 +149,52 @@ void bulk_rename(char *path, int all_flag) {
     }
 
     // perform the rename operations
-    for (int i = 0; i < addr->total_changes; i++) {
-        char oldName[PATH_MAX];
-        char newName[PATH_MAX];
+    if (confirm_flag) {
+        for (int i = 0; i < addr->total_changes; i++) {
+            char oldName[PATH_MAX];
+            char newName[PATH_MAX];
 
-        snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
-        snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+            snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+            snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
 
-        if (rename(oldName, newName) == 0) {
             printf("Renamed: %s -> %s\n", oldName, newName);
-        } else {
-            perror("Error renaming file");
+        }
+
+        char response;
+        printf("Confirm rename (Y/n): ");
+        response = getchar();
+
+        if (response == 'Y' || response == 'y' || response == '\n') {
+            printf("ok\n");
+
+            for (int i = 0; i < addr->total_changes; i++) {
+                char oldName[PATH_MAX];
+                char newName[PATH_MAX];
+
+                snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+                snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+
+                if (rename(oldName, newName) != 0) {
+                    perror("Error renaming file");
+                }
+            }
+        } else if (response == 'N' || response == 'n') {
+            printf("Aborting\n");
+        }
+
+    } else {
+        for (int i = 0; i < addr->total_changes; i++) {
+            char oldName[PATH_MAX];
+            char newName[PATH_MAX];
+
+            snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
+            snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
+
+            if (rename(oldName, newName) == 0) {
+                printf("Renamed: %s -> %s\n", oldName, newName);
+            } else {
+                perror("Error renaming file");
+            }
         }
     }
 
@@ -186,24 +221,23 @@ int main(int argc, char *argv[]) {
         } else {
             if (strcmp(argv[1], "-a") == 0 || strcmp(argv[1], "-ac") == 0 ||
                 strcmp(argv[1], "-ca") == 0) {
+
                 all_flag = 1;
-            }
-            if (strcmp(argv[1], "-c") == 0 || strcmp(argv[1], "-ac") == 0 ||
-                strcmp(argv[1], "-ca") == 0) {
+                if (argc == 3) copy_str(path, argv[2], PATH_MAX);
+            } else if (strcmp(argv[1], "-c") == 0 || strcmp(argv[1], "-ac") == 0 ||
+                       strcmp(argv[1], "-ca") == 0) {
+
                 confirm_flag = 1;
+                if (argc == 3) copy_str(path, argv[2], PATH_MAX);
+            } else {
+                if (argc == 2) copy_str(path, argv[1], PATH_MAX);
             }
         }
     }
 
-    if (argc == 2) copy_str(path, argv[1], PATH_MAX);
-    if (argc == 3) copy_str(path, argv[2], PATH_MAX);
     get_dir_path(path);
 
-    printf("bulk rename\n");
-    printf("path: %s\n", path);
-    printf("a:%i, c:%i\n", all_flag, confirm_flag);
-
-    bulk_rename(path, all_flag);
+    bulk_rename(path, all_flag, confirm_flag);
 
     return 0;
 }
