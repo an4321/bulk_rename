@@ -104,3 +104,21 @@ void get_dir_path(char dir[PATH_MAX]) {
         exit(1);
     }
 }
+
+int safe_rename(const char *oldName, const char *newName) {
+    struct stat buffer;
+
+    // check if the new name already exists
+    if (stat(newName, &buffer) == 0) {
+        fprintf(stderr, "Error: '%s' already exists. Renaming prevented to avoid overwrite.\n", newName);
+        return 1;
+    } else {
+        // new name does not exist, proceed with renaming
+        if (rename(oldName, newName) != 0) {
+            perror("Error renaming file");
+            return 2;
+        } else {
+            return 0;
+        }
+    }
+}

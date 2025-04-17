@@ -174,9 +174,7 @@ void bulk_rename(char *path, int all_flag, int confirm_flag) {
                 snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
                 snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
 
-                if (rename(oldName, newName) != 0) {
-                    perror("Error renaming file");
-                }
+                safe_rename(oldName, newName);
             }
         } else if (response == 'N' || response == 'n') {
             printf("Aborting\n");
@@ -190,10 +188,8 @@ void bulk_rename(char *path, int all_flag, int confirm_flag) {
             snprintf(oldName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_before);
             snprintf(newName, PATH_MAX, "%s/%s", path, addr->changed_files[i].file_after);
 
-            if (rename(oldName, newName) == 0) {
+            if (safe_rename(oldName, newName) == 0) {
                 printf("Renamed: %s -> %s\n", oldName, newName);
-            } else {
-                perror("Error renaming file");
             }
         }
     }
