@@ -9,8 +9,6 @@
 #include "listify.h"
 #include "util.h"
 
-#define LS_COMMAND "ls -vp --group-directories-first"
-
 int all_flag = 0;
 int confirm_flag = 0;
 char db_file_path[PATH_MAX];
@@ -137,12 +135,12 @@ void get_changes_and_rename(char *path) {
     close(fd);
 
     // construct the 'ls' command
-    char command[256];
+    char command[256] = "ls -vp --group-directories-first";
     if (all_flag) {
-        snprintf(command, sizeof(command), "%s -A \"%s\"", LS_COMMAND, path);
-    } else {
-        snprintf(command, sizeof(command), "%s \"%s\"", LS_COMMAND, path);
+        strncat(command, " -A", sizeof(command) - strlen(command) - 1);
     }
+    snprintf(command + strlen(command), sizeof(command) - strlen(command), " \"%s\"", path);
+
     write_command_to_file(tmp_filename, command);
 
     // read initial state of the dir
@@ -211,12 +209,10 @@ void get_changes_and_rename(char *path) {
 
 void revert(char *path) {
     struct Connection *conn = db_open(db_file_path);
-    if (!conn) die("Could not open database.");
+    if (!conn) die("could not open database");
 
     int id = db_search(conn, path);
-    if (id == -1) {
-        die("the database has no entry for this directory");
-    }
+    if (id == -1) die("the database has no entry for this directory");
 
     struct Address *addr = &conn->db->rows[id];
     print_address(addr);
@@ -268,7 +264,6 @@ int main(int argc, char *argv[]) {
     }
 
     get_dir_path(path);
-
     get_changes_and_rename(path);
 
     return 0;
