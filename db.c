@@ -80,3 +80,24 @@ int db_search(struct Connection *conn, const char *search_string) {
     }
     return -1;
 }
+
+int db_delete_item(struct Connection *conn, int id) {
+    if (id < 1 || id > conn->db->total) {
+        fprintf(stderr, "Error: Invalid ID (%d). ID must be between 1 and %d.\n", id, conn->db->total);
+        return -1;
+    }
+
+    // shift subsequent elements to overwrite the deleted one
+    for (int i = id; i < conn->db->total; i++) {
+        conn->db->rows[i] = conn->db->rows[i + 1];
+    }
+
+    // decrement the total count
+    conn->db->total--;
+
+    // mark the last element as empty
+    memset(&conn->db->rows[conn->db->total + 1], 0, sizeof(struct Address));
+
+    db_write(conn);
+    return 0;
+}
