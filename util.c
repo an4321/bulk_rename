@@ -1,6 +1,6 @@
 #include <ctype.h>
 #include <errno.h>
-#include <limits.h> // for PATH_MAX
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,85 +75,32 @@ void write_command_to_file(char *filename, char *command) {
     fclose(file);
 }
 
-void expand_path(char *path) {
-    char expanded_path[PATH_MAX];
+void get_dir_path(char dir[PATH_MAX]) {
     char resolved_path[PATH_MAX];
-    struct stat sb;
+    const char *home_dir;
 
-    // handle ~
-    if (path[0] == '~') {
-        const char *home_dir = getenv("HOME");
-        if (!home_dir) {
-            die("$HOME environment variable not set");
-        }
-        strcpy(path, expanded_path);
-        if (stat(path, &sb) != 0) {
-            perror("stat");
-            die("Failed to stat expanded path");
-        }
-        if (!S_ISDIR(sb.st_mode)) {
-            fprintf(stderr, "Error: '%s' is not a directory\n", path);
-            exit(1);
-        }
-        return;
+    if (dir[0] == '~') {
+        home_dir = getenv("HOME");
+        if (home_dir == NULL) die("$HOME environment variable not set.");
+
+        copy_str(resolved_path, home_dir, PATH_MAX);
     }
 
-    // handle .
-    if (strcmp(path, ".") == 0) {
-        if (getcwd(path, PATH_MAX) == NULL) {
-            perror("getcwd() error");
-            die("Failed to get current working directory");
-        }
-        return;
+    if (realpath(dir, resolved_path) != NULL) {
+        strncpy(dir, resolved_path, PATH_MAX - 1);
+        dir[PATH_MAX - 1] = '\0'; // ensure null termination
+    } else {
+        die("realpath");
     }
 
-    // handle "./" (Relative to Current)
-    if (strncmp(path, "./", 2) == 0) {
-        if (getcwd(expanded_path, sizeof(expanded_path)) == NULL) {
-            perror("getcwd() error");
-            die("Failed to get current working directory");
-        }
-        if (stat(path, &sb) != 0) {
-            perror("stat");
-            die("Failed to stat resolved path");
-        }
-        if (!S_ISDIR(sb.st_mode)) {
-            fprintf(stderr, "Error: '%s' is not a directory\n", path);
-            exit(1);
-        }
-        return; // Path is now absolute and a directory
-    }
+    struct stat path_stat;
 
-    // handle absolute or relative paths with ".." or "/"
-    if (path[0] == '/' || strchr(path, '/') != NULL) {
-        if (realpath(path, resolved_path) == NULL) {
-            perror("realpath() error");
-            die("Failed to resolve path");
-        }
-        strcpy(path, resolved_path);
-        if (stat(path, &sb) != 0) {
-            perror("stat");
-            die("Failed to stat resolved path");
-        }
-        if (!S_ISDIR(sb.st_mode)) {
-            fprintf(stderr, "Error: '%s' is not a directory\n", path);
-            exit(1);
-        }
-        return;
+    if (stat(dir, &path_stat) != 0) {
+        fprintf(stderr, "Failed to stat path: %s: %s\n", dir, strerror(errno));
+        exit(1);
     }
-
-    // handle simple relative paths (like a dir in $PWD)
-    if (getcwd(expanded_path, sizeof(expanded_path)) == NULL) {
-        perror("getcwd() error");
-        die("Failed to get current working directory");
-    }
-
-    if (stat(path, &sb) != 0) {
-        perror("stat");
-        die("Failed to stat final path");
-    }
-    if (!S_ISDIR(sb.st_mode)) {
-        fprintf(stderr, "Error: '%s' is not a directory\n", path);
+    if (!S_ISDIR(path_stat.st_mode)) {
+        fprintf(stderr, "%s is not a directory\n", dir);
         exit(1);
     }
 }

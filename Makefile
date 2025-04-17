@@ -9,7 +9,9 @@ rn: $(SRCS)
 
 test: $(SRCS) 
 	$(CC) $(CFLAGS) -g $(SRCS) -o rn
-	valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all ./rn
+
+list_db: list_db.c db.c
+	$(CC) $(CFLAGS) list_db.c db.c -o list_db
 
 clean:
 	rm rn
