@@ -4,7 +4,7 @@ Bulk rename by editing a file in your editor
 Installation:
         make install
 
-Usage: ./rn [-h] [-r <path>] [-a] [-c] [<path>]
+Usage: rn [-h] [-r <path>] [-a] [-c] [<path>]
         -h, --help      Show this help message
         -r, --revert    Revert the last rename operation in <path>
         -a              Include hidden files in the listing
