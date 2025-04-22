@@ -65,7 +65,7 @@ struct Address *get_changes(const char *file_name, struct string_list initial,
 void bulk_rename(char *path, struct Address *addr, int reverse) {
     if (addr->total_changes == 0) {
         printf("nothing happned\n");
-        exit(0);
+        return;
     }
     if (confirm_flag) {
         for (int i = 0; i < addr->total_changes; i++) {
