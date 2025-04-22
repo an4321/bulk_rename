@@ -58,6 +58,13 @@ void db_write(struct Connection *conn) {
 }
 
 void db_set(struct Connection *conn, int id, struct Address *changed_files) {
+    if (id > MAX_ROWS) {
+        die("specified id is too big");
+    }
+    // case for db full
+    if (conn->db->total == MAX_ROWS) {
+        conn->db->total = 0;
+    }
     // set to -1 to add to the end
     if (id == -1) {
         conn->db->total += 1;
